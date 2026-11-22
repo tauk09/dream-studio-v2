@@ -408,7 +408,6 @@ export class FailoverLLMProvider implements LLMProvider {
   readonly providerName: ProviderKind;
   readonly modelName: string;
   private readonly slots: ProviderSlot[];
-  private cursor = 0;
 
   constructor(slots: ProviderSlot[]) {
     this.slots = slots;
@@ -422,17 +421,11 @@ export class FailoverLLMProvider implements LLMProvider {
   async generateJson<T>(req: LLMJsonRequest): Promise<T> {
     return globalLimiter.run(async () => {
       let lastError: Error | null = null;
-      const total = this.slots.length;
-      const start = this.cursor % total;
-      this.cursor = (this.cursor + 1) % total;
 
-      // Order slots starting from round-robin cursor, putting non-cooling slots first
-      const ordered: ProviderSlot[] = [];
-      for (let i = 0; i < total; i++) {
-        ordered.push(this.slots[(start + i) % total]!);
-      }
-      const ready = ordered.filter((s) => !isSlotCoolingDown(s.id));
-      const candidates = ready.length > 0 ? ready : ordered;
+      // Priority-first: always use highest-quality non-cooling slot first,
+      // and only fall back to secondary/lite slots if the primary is cooling down or fails.
+      const ready = this.slots.filter((s) => !isSlotCoolingDown(s.id));
+      const candidates = ready.length > 0 ? ready : this.slots;
 
       for (const slot of candidates) {
         try {

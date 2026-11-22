@@ -51,6 +51,7 @@ const SYSTEM_CODEGEN_PROMPT = `당신은 Dream Studio 2.0의 AI Creative Planner
 3. 생성 코드는 window.__DREAM_CONFIG__에서 블록 편집 값을 읽고 window.onDreamConfigUpdate(fn) 콜백을 등록해야 합니다.
 4. componentGraph.nodes에는 블록 편집 가능 항목(editableVia: "block")과 AI 수정 항목(editableVia: "ai_only")을 명확히 구분하세요.
 5. 학생이 제공하지 않은 개인 경력·수상 이력을 사실처럼 지어내지 말고, 예시 데이터는 blueprint.exampleDataDisclaimerKo에 명시하세요.
+6. JSON 안정성: files의 HTML 속성(class='...', id='...')과 JS 문자열 내부에서는 큰따옴표(") 대신 작은따옴표(')를 우선 사용해 JSON 파싱 오류를 원천 방지하세요.
 
 반드시 아래 정확한 JSON 키 구조를 따르세요 (추가 키 금지, 특히 "label" 대신 반드시 "labelKo" 사용):
 {
@@ -388,7 +389,7 @@ export class StudioOrchestrator {
           raw = await active.generateJson<unknown>({
             systemPrompt,
             maxOutputTokens: 16384,
-            temperature: genAttempt === 0 ? 0.65 : 0.25,
+            temperature: genAttempt === 0 ? 0.35 : 0.2,
             userPrompt: JSON.stringify({
               kind: input.kind,
               studentPrompt: input.prompt,
