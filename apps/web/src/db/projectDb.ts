@@ -159,50 +159,53 @@ export async function deleteProject(id: string): Promise<void> {
 }
 
 export function createPublishSlug(title: string): string {
-  const base = title
+  const ascii = title
     .toLowerCase()
-    .replace(/[^a-z0-9가-힣]+/g, "-")
+    .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 28);
-  const suffix = Math.random().toString(36).slice(2, 6);
-  return `${base || "dream"}-${suffix}`;
+    .slice(0, 18);
+  const suffix = Math.random().toString(36).slice(2, 8);
+  return `${ascii || "work"}-${suffix}`;
 }
 
 export async function publishProject(
   project: DreamProject,
   previewHtml: string
 ): Promise<{ project: DreamProject; snapshot: PublishedSnapshot }> {
-  const slug = project.publishedSlug || createPublishSlug(project.title);
+  const slug =
+    project.publishedSlug && /^[a-z0-9-]+$/i.test(project.publishedSlug)
+      ? project.publishedSlug
+      : createPublishSlug(project.title);
   const now = new Date().toISOString();
   const snapshot: PublishedSnapshot = {
     slug,
     projectId: project.id,
     kind: project.kind,
     title: project.title,
-    summary: project.blueprint.creativeGoal,
+    summary: project.blueprint.creativeGoal.slice(0, 300),
     previewHtml,
     publishedAt: now,
     isDevFixture: project.generatorSource === "dev_fixture"
   };
 
-  // Publish to server DB so ANY device can open /p/:slug or /g/:slug
-  try {
-    await fetch("/api/publish", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        slug: snapshot.slug,
-        projectId: snapshot.projectId,
-        kind: snapshot.kind,
-        title: snapshot.title,
-        summary: snapshot.summary,
-        previewHtml: snapshot.previewHtml,
-        isDevFixture: Boolean(snapshot.isDevFixture)
-      })
-    });
-  } catch {
-    // Still save locally as fallback
+  // Publish to server DB so ANY device (phone/friend) can open /p/:slug or /g/:slug
+  const res = await fetch("/api/publish", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      slug: snapshot.slug,
+      projectId: snapshot.projectId,
+      kind: snapshot.kind,
+      title: snapshot.title,
+      summary: snapshot.summary,
+      previewHtml: snapshot.previewHtml,
+      isDevFixture: Boolean(snapshot.isDevFixture)
+    })
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { message?: string };
+    throw new Error(err.message ?? `서버 게시에 실패했습니다 (HTTP ${res.status}). 다시 로그인 후 시도해 주세요.`);
   }
 
   await db.published.put(snapshot);
