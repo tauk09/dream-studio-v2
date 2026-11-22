@@ -94,11 +94,27 @@ const SYSTEM_CODEGEN_PROMPT = `당신은 Dream Studio 2.0의 AI Creative Planner
 - node.kind는 반드시 "section" | "component" | "game_object" | "game_rule" | "style" 중 하나
 - editableProperties[].type은 반드시 "text" | "textarea" | "color" | "number" | "boolean" 중 하나`;
 
-const SYSTEM_EDIT_PROMPT = `당신은 Dream Studio 2.0의 AI 대화형 코드 수정 에이전트입니다.
-현재 files와 componentGraph를 읽고 요청한 부분만 최소 범위로 수정해 순수 JSON으로 반환하세요.
-보안 금지: eval, new Function, fetch, XMLHttpRequest, WebSocket, document.cookie, localStorage, 외부 CDN 스크립트.
-형식: { "summaryKo": "...", "diffItems": ["..."], "requiresGameRestart": true/false, "filePatches": { "파일명": "수정된 전체 내용" }, "componentGraph": { "nodes": [...] } }
-componentGraph.nodes의 각 노드는 id, name, labelKo, kind("section"|"component"|"game_object"|"game_rule"|"style"), parentId(string|null), childrenIds(string[]), sourceFile, editableVia("block"|"ai_only"), editableProperties([{key, labelKo, type("text"|"textarea"|"color"|"number"|"boolean"), value, min?, max?, step?}])만 포함해야 합니다.`;
+const SYSTEM_EDIT_PROMPT = `당신은 Dream Studio 2.0의 시니어 디버거 & AI 코드 수정 에이전트입니다.
+현재 files, existingFileNames, componentGraph, 그리고 runtimeError(실제 브라우저 실행 오류)와 recentHistory(이전에 시도한 수정 요청)를 꼼꼼히 읽고 근본 원인을 찾아 완전히 해결한 수정 코드를 순수 JSON으로 반환하세요.
+
+[절대 준수 규칙]
+1. 먼저 "rootCauseDiagnosisKo"에 실제 버그의 근본 원인(예: 어느 파일 몇 번째 로직/DOM ID 불일치/상태 초기화 누락/충돌 판정 오류)을 구체적으로 분석하세요.
+2. recentHistory에 비슷한 요청이 있었다면, 이전에 했던 표면적 수정이 실패했다는 뜻이므로 코드를 처음부터 다시 점검해 진짜 원인을 근본적으로 고치세요.
+3. "filePatches"에는 반드시 existingFileNames에 이미 존재하는 파일명만 사용하세요! (예: game.js가 있는데 app.js나 script.js를 새로 만들면 두 파일이 중복 실행되어 심각한 오류가 납니다.)
+4. filePatches의 값은 수정된 파일의 **완전한 전체 소스 코드**여야 합니다. 절대 "// 기존 코드 생략"이나 "..."으로 줄이지 마세요.
+5. index.html의 모든 id와 JS의 getElementById/querySelector가 100% 일치하는지, 이벤트 리스너와 게임 재시작 초기화가 정상 동작하는지 검증하세요.
+6. HTML 속성 및 JS 문자열 내부에서는 작은따옴표(')를 우선 사용해 JSON 파싱 오류를 방지하세요.
+7. 보안 금지: eval, new Function, fetch, XMLHttpRequest, WebSocket, document.cookie, localStorage, 외부 CDN 스크립트.
+
+응답 JSON 형식:
+{
+  "rootCauseDiagnosisKo": "원인 분석 (1~2문장)",
+  "summaryKo": "수정 내용 요약 (한국어)",
+  "diffItems": ["구체적 변경사항 1", "구체적 변경사항 2"],
+  "requiresGameRestart": true,
+  "filePatches": { "기존파일명": "수정된 전체 코드" },
+  "componentGraph": { "nodes": [...] }
+}`;
 
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -269,23 +285,28 @@ function normalizeLLMProjectOutput(raw: unknown, input: StartGenerationInput): u
 const SYSTEM_WEBSITE_CODEGEN_PROMPT = `${SYSTEM_CODEGEN_PROMPT}
 
 [웹사이트 제작 전용 필수 요구사항 — 실제 서비스 수준의 풍부한 완성도]
-1. 단순한 제목+문단 1~2개짜리 빈약한 페이지 금지! 반드시 아래 5개 이상의 완성된 섹션을 포함하세요:
-   - 상단 내비게이션 바 (브랜드명 + 섹션 이동 링크 + 다크/라이트 또는 강조 배지)
+1. 학생의 요청(studentPrompt + extraNotes)에 등장하는 모든 주제·고유명사·원하는 기능을 하나도 빠짐없이 정확히 구현하세요.
+2. 단순한 제목+문단 1~2개짜리 빈약한 페이지 금지! 반드시 아래 5개 이상의 완성된 섹션을 포함하세요:
+   - 상단 내비게이션 바 (브랜드명 + 섹션 이동 링크 + 강조 배지)
    - 시각적 임팩트가 있는 히어로 섹션 (그라데이션/카드 레이아웃 + 핵심 제목·부제목 + 주요/보조 CTA 버튼 + 주제 관련 미니 프리뷰/요약 카드)
    - **주제에 특화된 실제 동작하는 JavaScript 인터랙티브 체험 위젯 2개 이상** (예: 계산기/시뮬레이터, 탭 필터 갤러리, 실시간 체크리스트+진행률 바, 인터랙티브 퀴즈+점수판 등)
    - 핵심 특징·정보 카드 그리드 (3~4개 카드, 깔끔한 인라인 SVG 아이콘 포함)
    - 활동/진로 로드맵 또는 FAQ 아코디언 + 깔끔한 푸터
-2. 시각 디자인: 충분한 여백(padding 48~72px), 카드 그림자, 호버 애니메이션, 반응형 그리드(모바일·PC 모두 깨지지 않음)를 styles.css에 세심하게 작성하세요.
-3. 블록 편집 확장성: componentGraph.nodes에 최소 4개 이상의 노드(히어로 제목/부제목/CTA, 테마 강조색·배경색, 인터랙티브 위젯 설정값, 푸터 문구 등)를 배치하고 window.__DREAM_CONFIG__와 window.onDreamConfigUpdate에 연결하세요.`;
+3. 무결성: app.js에서 참조하는 모든 DOM ID(getElementById/querySelector)가 index.html에 정확히 존재해야 하며, 모든 버튼 클릭 시 즉시 눈에 보이는 피드백이 동작해야 합니다.
+4. 시각 디자인: 충분한 여백(padding 48~72px), 카드 그림자, 호버 애니메이션, 반응형 그리드(모바일·PC 모두 깨지지 않음)를 styles.css에 세심하게 작성하세요.
+5. 블록 편집 확장성: componentGraph.nodes에 최소 4개 이상의 노드(히어로 제목/부제목/CTA, 테마 강조색·배경색, 인터랙티브 위젯 설정값, 푸터 문구 등)를 배치하고 window.__DREAM_CONFIG__와 window.onDreamConfigUpdate에 연결하세요.`;
 
 const SYSTEM_GAME_CODEGEN_PROMPT = `${SYSTEM_CODEGEN_PROMPT}
 
 [게임 제작 전용 필수 요구사항 — 반드시 준수]
 1. 학생이 설명한 게임의 테마·배경·플레이어 캐릭터·장애물·수집물·규칙·승패 조건을 100% 충실히 구현하세요. (설명과 무관한 엉뚱한 미니게임이나 단순 클릭 카운터 금지!)
-2. HTML5 <canvas> 기반의 2D 게임 루프(requestAnimationFrame + deltaTime)를 "game.js"에 작성하세요.
+2. HTML5 <canvas> 기반의 2D 게임 루프(requestAnimationFrame + clamp된 deltaTime <= 0.05)를 "game.js"에 작성하세요. <canvas>는 명시적인 width/height(예: 800x480)와 CSS max-width:100%를 가져야 합니다.
 3. 시각적 완성도: 단색 네모만 띄우지 말고, Canvas 2D API(그라데이션 배경, 캐릭터 디테일, 아이콘/도형 조합, 충돌 파티클·플래시 피드백, 진행 바)로 테마가 한눈에 느껴지게 그리세요.
-4. 조작성: 키보드(방향키/WASD/Space)와 화면 하단 터치/마우스 버튼(좌·우·액션 등)을 모두 지원해 어떤 기기에서도 바로 플레이 가능해야 합니다.
-5. 게임 흐름: 시작 오버레이(게임 제목 + 조작법 + [게임 시작] 버튼) → 실시간 플레이(상단 HUD: 점수·남은시간/체력·목표) → 승리/게임오버 결과 화면([다시 도전] 버튼으로 완전 초기화).
+4. 조작성 & 버그 방지:
+   - 키보드(방향키/WASD/Space) 입력 시 방향키·Space에 e.preventDefault()를 호출해 화면 스크롤을 막으세요.
+   - 화면 하단에 터치/마우스 버튼(좌·우·점프/액션 등)을 함께 제공해 모바일에서도 플레이 가능하게 하세요.
+   - game.js에서 참조하는 모든 DOM ID가 index.html에 정확히 존재해야 합니다.
+5. 게임 흐름: 시작 오버레이(게임 제목 + 조작법 + [게임 시작] 버튼) → 실시간 플레이(상단 HUD: 점수·남은시간/체력·목표) → 승리/게임오버 결과 화면([다시 도전] 버튼으로 모든 상태·배열·타이머를 100% 초기화).
 6. componentGraph.nodes에는 gameTitle(text), playerSpeed(number), timeLimit(number), accentColor(color) 등 실제 게임 밸런스에 즉시 반영되는 블록 속성을 반드시 연결하세요.`;
 
 const recommendationCache = new Map<
@@ -518,7 +539,8 @@ export class StudioOrchestrator {
   async planConversationalEdit(
     project: DreamProject,
     userRequest: string,
-    testFixtureMode?: boolean
+    testFixtureMode?: boolean,
+    context?: { runtimeError?: string; recentHistory?: string[] }
   ): Promise<{
     ok: boolean;
     errorCode?: "AI_NOT_CONFIGURED" | "VALIDATION_FAILED" | "FAILED";
@@ -616,52 +638,121 @@ export class StudioOrchestrator {
     }
 
     try {
-      const raw = await provider!.generateJson<unknown>({
-        systemPrompt: SYSTEM_EDIT_PROMPT,
-        userPrompt: JSON.stringify({
-          userRequest,
-          kind: project.kind,
-          files: project.source.files,
-          componentGraph: project.componentGraph
-        }),
-        temperature: 0.3
-      });
-      const rawRec = asRecord(raw);
-      const normalizedEdit = {
-        summaryKo: asString(rawRec["summaryKo"] ?? rawRec["summary"], userRequest, 200),
-        diffItems: asStringArray(rawRec["diffItems"], [userRequest], 10, 200),
-        requiresGameRestart: Boolean(rawRec["requiresGameRestart"]),
-        filePatches: asRecord(rawRec["filePatches"] ?? rawRec["files"]),
-        componentGraph: normalizeComponentGraph(rawRec["componentGraph"] ?? project.componentGraph)
+      const existingFileNames = Object.keys(project.source.files).filter(
+        (k) => k !== "manifest.json"
+      );
+      const existingJsFile = existingFileNames.find((k) => k.endsWith(".js")) ?? null;
+
+      const normalizePatches = (rawPatches: Record<string, unknown>): Record<string, string> => {
+        const out: Record<string, string> = {};
+        for (const [k, v] of Object.entries(rawPatches)) {
+          if (typeof v !== "string" || !v.trim()) continue;
+          if (k.endsWith(".js") && existingJsFile && !existingFileNames.includes(k)) {
+            out[existingJsFile] = v;
+          } else {
+            out[k] = v;
+          }
+        }
+        return out;
       };
-      const parsed = LLMEditOutputSchema.safeParse(normalizedEdit);
-      if (!parsed.success) {
+
+      const callEditModel = async (repairErrors?: string[]) => {
+        return provider!.generateJson<unknown>({
+          systemPrompt: SYSTEM_EDIT_PROMPT,
+          maxOutputTokens: 16384,
+          userPrompt: JSON.stringify({
+            userRequest,
+            kind: project.kind,
+            existingFileNames,
+            runtimeError: context?.runtimeError ?? null,
+            recentHistory: context?.recentHistory ?? [],
+            previousValidationErrors: repairErrors ?? [],
+            files: project.source.files,
+            componentGraph: project.componentGraph
+          }),
+          temperature: repairErrors ? 0.15 : 0.25
+        });
+      };
+
+      let raw = await callEditModel();
+      let parsed: ReturnType<typeof LLMEditOutputSchema.safeParse>;
+      let mergedFiles: Record<string, string> = {};
+      let val: ReturnType<typeof validateGeneratedCode> | null = null;
+      let diagnosis = "";
+
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const rawRec = asRecord(raw);
+        diagnosis = asString(rawRec["rootCauseDiagnosisKo"], "", 240);
+        const normalizedPatches = normalizePatches(
+          asRecord(rawRec["filePatches"] ?? rawRec["files"])
+        );
+        const normalizedEdit = {
+          summaryKo: asString(rawRec["summaryKo"] ?? rawRec["summary"], userRequest, 200),
+          diffItems: asStringArray(rawRec["diffItems"], [userRequest], 10, 200),
+          requiresGameRestart: Boolean(rawRec["requiresGameRestart"]),
+          filePatches: normalizedPatches,
+          componentGraph: normalizeComponentGraph(
+            rawRec["componentGraph"] ?? project.componentGraph
+          )
+        };
+        parsed = LLMEditOutputSchema.safeParse(normalizedEdit);
+        const hasPatches = parsed.success && Object.keys(parsed.data.filePatches).length > 0;
+        if (parsed.success && hasPatches) {
+          mergedFiles = {
+            ...project.source.files,
+            ...parsed.data.filePatches,
+            "manifest.json": JSON.stringify(parsed.data.componentGraph, null, 2)
+          };
+          val = validateGeneratedCode(mergedFiles, project.kind);
+          if (val.ok) break;
+        }
+        if (attempt === 0) {
+          const errs = !parsed.success
+            ? parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`)
+            : !hasPatches
+              ? [
+                  `filePatches가 비어 있습니다. 반드시 existingFileNames(${existingFileNames.join(", ")}) 중 수정된 전체 코드를 반환하세요.`
+                ]
+              : (val?.errors ?? ["코드 검증 실패"]);
+          raw = await callEditModel(errs);
+        }
+      }
+
+      if (!parsed!.success) {
         return { ok: false, errorCode: "VALIDATION_FAILED", message: "AI 수정 응답 형식 오류" };
       }
-      const mergedFiles = {
-        ...project.source.files,
-        ...parsed.data.filePatches,
-        "manifest.json": JSON.stringify(parsed.data.componentGraph, null, 2)
-      };
-      const val = validateGeneratedCode(mergedFiles, project.kind);
-      if (!val.ok) {
-        return { ok: false, errorCode: "VALIDATION_FAILED", message: val.errors.join(" / ") };
+      if (Object.keys(parsed!.data.filePatches).length === 0) {
+        return {
+          ok: false,
+          errorCode: "VALIDATION_FAILED",
+          message: "AI가 실제 코드 변경(filePatches)을 생성하지 못했습니다. 조금 더 구체적으로 요청해 주세요."
+        };
+      }
+      if (!val || !val.ok) {
+        return {
+          ok: false,
+          errorCode: "VALIDATION_FAILED",
+          message: val?.errors.join(" / ") ?? "코드 검증에 실패했습니다."
+        };
       }
       const nextRev = project.revision + 1;
+      const summaryWithDiag = diagnosis
+        ? `[원인 분석] ${diagnosis} → ${parsed!.data.summaryKo}`
+        : parsed!.data.summaryKo;
       const candidate: DreamProject = {
         ...project,
         revision: nextRev,
         updatedAt: now,
-        contentHash: computeDreamProjectHash(mergedFiles, parsed.data.componentGraph),
+        contentHash: computeDreamProjectHash(mergedFiles, parsed!.data.componentGraph),
         source: { ...project.source, files: mergedFiles, validationResult: val },
-        componentGraph: parsed.data.componentGraph,
+        componentGraph: parsed!.data.componentGraph,
         versions: [
           ...project.versions.slice(-29),
           {
             revision: nextRev,
             sourceSnapshot: structuredClone(mergedFiles),
-            graphSnapshot: structuredClone(parsed.data.componentGraph),
-            changeDescription: `AI 수정: ${parsed.data.summaryKo}`,
+            graphSnapshot: structuredClone(parsed!.data.componentGraph),
+            changeDescription: `AI 수정: ${parsed!.data.summaryKo}`.slice(0, 180),
             createdAt: now,
             validationStatus: "valid"
           }
@@ -673,13 +764,13 @@ export class StudioOrchestrator {
         pendingChange: {
           requestId: `req_${Date.now().toString(36)}`,
           baseRevision: project.revision,
-          summaryKo: parsed.data.summaryKo,
-          diffItems: parsed.data.diffItems,
-          changedFiles: Object.keys(parsed.data.filePatches),
-          requiresGameRestart: parsed.data.requiresGameRestart,
+          summaryKo: summaryWithDiag,
+          diffItems: parsed!.data.diffItems,
+          changedFiles: Object.keys(parsed!.data.filePatches),
+          requiresGameRestart: parsed!.data.requiresGameRestart,
           generatorSource: "live_ai",
           candidateProject: candidate,
-          previewHtml: buildSandboxedPreviewHtml(mergedFiles, parsed.data.componentGraph)
+          previewHtml: buildSandboxedPreviewHtml(mergedFiles, parsed!.data.componentGraph)
         }
       };
     } catch (err) {

@@ -83,6 +83,8 @@ export function ProjectEditorPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [pendingChange, setPendingChange] = useState<PendingCodeChange | null>(null);
+  const [lastRuntimeError, setLastRuntimeError] = useState<string | null>(null);
+  const [recentEditHistory, setRecentEditHistory] = useState<string[]>([]);
 
   // Publish modal state
   const [publishOpen, setPublishOpen] = useState(false);
@@ -234,15 +236,20 @@ export function ProjectEditorPage() {
   const handleRequestAiEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!project || !aiRequest.trim()) return;
+    const reqText = aiRequest.trim();
     setAiLoading(true);
     setAiError(null);
     setPendingChange(null);
     try {
-      const res = await requestConversationalEdit(project, aiRequest.trim(), aiFixtureMode);
+      const res = await requestConversationalEdit(project, reqText, aiFixtureMode, {
+        runtimeError: lastRuntimeError ?? undefined,
+        recentHistory: recentEditHistory
+      });
       if (!res.ok) {
         setAiError(res.message);
         return;
       }
+      setRecentEditHistory((prev) => [...prev.slice(-5), reqText]);
       setPendingChange(res.pendingChange);
     } catch {
       setAiError("AI 수정 요청 중 네트워크 오류가 발생했습니다.");
@@ -257,6 +264,7 @@ export function ProjectEditorPage() {
     const approvedHtml = pendingChange.previewHtml;
     setPendingChange(null);
     setAiRequest("");
+    setLastRuntimeError(null);
     commitChange(approvedProject, { immediate: true, htmlOverride: approvedHtml });
   };
 
@@ -676,6 +684,7 @@ export function ProjectEditorPage() {
               componentGraph={project.componentGraph}
               title={project.title}
               heightClass="h-full"
+              onRuntimeError={(msg) => setLastRuntimeError(msg)}
             />
           </div>
         </main>
@@ -800,6 +809,22 @@ export function ProjectEditorPage() {
                     개발 테스트 모드 (Fixture Diff 검증)
                   </label>
                 </div>
+
+                {lastRuntimeError && (
+                  <div className="rounded-2xl border border-[#FBC9D0] bg-[#FEECEF] p-3.5 text-xs text-[#B82839]">
+                    <p className="font-bold">실행 오류가 자동 감지되어 AI에 함께 전달됩니다</p>
+                    <p className="mt-1 break-all font-mono text-[10px]">{lastRuntimeError}</p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAiRequest(`감지된 실행 오류(${lastRuntimeError})의 근본 원인을 찾아 완전히 고쳐줘`)
+                      }
+                      className="mt-2 rounded-lg bg-[#E75566] px-2.5 py-1 text-[11px] font-bold text-white hover:bg-[#D44455]"
+                    >
+                      이 오류 수정 문구 자동 채우기
+                    </button>
+                  </div>
+                )}
 
                 <div className="flex flex-wrap gap-1.5">
                   {[

@@ -94,13 +94,20 @@ export async function recommendGameIdeas(
 export async function requestConversationalEdit(
   project: DreamProject,
   userRequest: string,
-  testFixtureMode?: boolean
+  testFixtureMode?: boolean,
+  context?: { runtimeError?: string; recentHistory?: string[] }
 ): Promise<ConversationalEditResponse> {
   const res = await fetch("/api/ai/edit", {
     method: "POST",
     credentials: "include",
     headers: authHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ project, userRequest, testFixtureMode })
+    body: JSON.stringify({
+      project,
+      userRequest,
+      testFixtureMode,
+      runtimeError: context?.runtimeError || undefined,
+      recentHistory: context?.recentHistory?.length ? context.recentHistory : undefined
+    })
   });
   return (await res.json()) as ConversationalEditResponse;
 }

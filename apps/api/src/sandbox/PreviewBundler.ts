@@ -45,8 +45,8 @@ window.__DREAM_CONFIG__ = ${configJson};
 window.__DREAM_GRAPH__ = ${graphJson};
 window.__DREAM_LISTENERS__ = [];
 window.onDreamConfigUpdate = function(fn){ if(typeof fn === 'function') window.__DREAM_LISTENERS__.push(fn); };
-window.addEventListener('error', function(e){ try{ window.parent.postMessage({ type: 'DREAM_RUNTIME_ERROR', message: String(e.message || '실행 오류') }, '*'); }catch(_){} });
-window.addEventListener('unhandledrejection', function(e){ try{ window.parent.postMessage({ type: 'DREAM_RUNTIME_ERROR', message: String(e.reason || '비동기 오류') }, '*'); }catch(_){} });
+window.addEventListener('error', function(e){ try{ var detail = String(e.message || '실행 오류') + (e.lineno ? (' (line ' + e.lineno + ')') : ''); window.parent.postMessage({ type: 'DREAM_RUNTIME_ERROR', message: detail }, '*'); }catch(_){} });
+window.addEventListener('unhandledrejection', function(e){ try{ var reason = e.reason && e.reason.message ? e.reason.message : String(e.reason || '비동기 오류'); window.parent.postMessage({ type: 'DREAM_RUNTIME_ERROR', message: reason }, '*'); }catch(_){} });
 
 function __dsEsc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function __dsProp(node, prefix){

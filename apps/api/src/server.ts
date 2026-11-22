@@ -35,7 +35,9 @@ const RecommendSchema = z
 const EditSchema = z
   .object({
     project: DreamProjectSchema,
-    userRequest: z.string().min(1).max(400),
+    userRequest: z.string().min(1).max(600),
+    runtimeError: z.string().max(500).optional(),
+    recentHistory: z.array(z.string().max(240)).max(8).optional(),
     testFixtureMode: z.boolean().optional()
   })
   .strict();
@@ -546,7 +548,11 @@ export function buildServer(
     const res = await orchestrator.planConversationalEdit(
       parsed.data.project,
       parsed.data.userRequest,
-      parsed.data.testFixtureMode
+      parsed.data.testFixtureMode,
+      {
+        runtimeError: parsed.data.runtimeError,
+        recentHistory: parsed.data.recentHistory
+      }
     );
     store.recordAIUsage({
       userId: user.id,

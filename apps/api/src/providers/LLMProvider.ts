@@ -494,9 +494,9 @@ function buildProviderSlots(env: NodeJS.ProcessEnv): ProviderSlot[] {
       new Set([
         ...(customModel && (pref === "gemini" || !pref) ? [customModel] : []),
         "gemini-3-flash-preview",
+        "gemini-2.5-pro",
         "gemini-3.1-flash-lite",
-        "gemini-2.5-flash-lite",
-        "gemini-flash-latest"
+        "gemini-2.5-flash-lite"
       ])
     );
     for (const model of models) {
