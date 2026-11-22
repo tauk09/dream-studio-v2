@@ -87,6 +87,11 @@ const PublishSchema = z
 const SESSION_COOKIE = "ds_session";
 
 function readSessionToken(req: FastifyRequest): string | null {
+  const auth = req.headers.authorization;
+  if (typeof auth === "string" && auth.toLowerCase().startsWith("bearer ")) {
+    const bearer = auth.slice(7).trim();
+    if (bearer.length > 0) return bearer;
+  }
   const header = req.headers.cookie;
   if (!header) return null;
   for (const part of header.split(";")) {
@@ -215,7 +220,7 @@ export function buildServer(
       return reply.status(409).send(res);
     }
     setSessionCookie(req, reply, res.token);
-    return reply.status(201).send({ ok: true, user: res.user });
+    return reply.status(201).send({ ok: true, user: res.user, token: res.token });
   });
 
   app.post("/api/auth/login", async (req, reply) => {
@@ -228,7 +233,7 @@ export function buildServer(
       return reply.status(401).send(res);
     }
     setSessionCookie(req, reply, res.token);
-    return { ok: true, user: res.user };
+    return { ok: true, user: res.user, token: res.token };
   });
 
   app.post("/api/auth/logout", async (req, reply) => {

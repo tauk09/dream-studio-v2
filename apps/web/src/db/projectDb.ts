@@ -1,6 +1,6 @@
 import Dexie, { type Table } from "dexie";
 import { computeDreamProjectHash, type DreamProject } from "@dream-studio-v2/core";
-import { useAuthStore } from "../store/authStore";
+import { authHeaders, useAuthStore } from "../store/authStore";
 
 export interface PublishedSnapshot {
   slug: string;
@@ -41,8 +41,10 @@ export async function listProjects(): Promise<DreamProject[]> {
   const user = await ensureAuthChecked();
   if (user) {
     try {
-      const res = await fetch("/api/projects", { credentials: "include" });
-      if (res.ok) {
+      const res = await fetch("/api/projects", { credentials: "include", headers: authHeaders() });
+      if (res.status === 401) {
+        useAuthStore.getState().clearAuth();
+      } else if (res.ok) {
         const data = (await res.json()) as { ok: boolean; projects: DreamProject[] };
         if (data.ok && Array.isArray(data.projects)) {
           return data.projects;
@@ -60,9 +62,12 @@ export async function getProject(id: string): Promise<DreamProject | undefined> 
   if (user) {
     try {
       const res = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
-        credentials: "include"
+        credentials: "include",
+        headers: authHeaders()
       });
-      if (res.ok) {
+      if (res.status === 401) {
+        useAuthStore.getState().clearAuth();
+      } else if (res.ok) {
         const data = (await res.json()) as { ok: boolean; project?: DreamProject };
         if (data.ok && data.project) {
           await db.projects.put(data.project);
@@ -91,10 +96,12 @@ export async function saveProject(project: DreamProject): Promise<DreamProject> 
       const res = await fetch(`/api/projects/${encodeURIComponent(stamped.id)}`, {
         method: "PUT",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(stamped)
       });
-      if (res.ok) {
+      if (res.status === 401) {
+        useAuthStore.getState().clearAuth();
+      } else if (res.ok) {
         const data = (await res.json()) as { ok: boolean; project?: DreamProject };
         if (data.ok && data.project) {
           await db.projects.put(data.project);
@@ -116,7 +123,7 @@ export async function syncLocalProjectsToCloud(): Promise<number> {
   const res = await fetch("/api/projects/sync", {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ projects: localAll })
   });
   if (!res.ok) return 0;
@@ -150,7 +157,8 @@ export async function deleteProject(id: string): Promise<void> {
     try {
       await fetch(`/api/projects/${encodeURIComponent(id)}`, {
         method: "DELETE",
-        credentials: "include"
+        credentials: "include",
+        headers: authHeaders()
       });
     } catch {
       // Ignore network errors on delete fallback
@@ -192,7 +200,7 @@ export async function publishProject(
   const res = await fetch("/api/publish", {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({
       slug: snapshot.slug,
       projectId: snapshot.projectId,
@@ -203,6 +211,10 @@ export async function publishProject(
       isDevFixture: Boolean(snapshot.isDevFixture)
     })
   });
+  if (res.status === 401) {
+    useAuthStore.getState().clearAuth();
+    throw new Error("로그인 세션이 만료되었습니다. 다시 로그인한 뒤 게시해 주세요.");
+  }
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { message?: string };
     throw new Error(err.message ?? `서버 게시에 실패했습니다 (HTTP ${res.status}). 다시 로그인 후 시도해 주세요.`);
@@ -222,7 +234,8 @@ export async function unpublishProject(project: DreamProject): Promise<DreamProj
     try {
       await fetch(`/api/publish/${encodeURIComponent(project.publishedSlug)}`, {
         method: "DELETE",
-        credentials: "include"
+        credentials: "include",
+        headers: authHeaders()
       });
     } catch {
       // Ignore offline error

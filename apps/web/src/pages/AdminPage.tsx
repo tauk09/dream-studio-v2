@@ -18,7 +18,7 @@ import {
 import { WorkspaceLayout } from "../components/layout/WorkspaceLayout";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
-import { useAuthStore } from "../store/authStore";
+import { authHeaders, useAuthStore } from "../store/authStore";
 
 interface AdminUserRow {
   id: string;
@@ -135,7 +135,7 @@ export function AdminPage() {
       const res = await fetch("/api/admin/verify-password", {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ password: unlockInput })
       });
       const json = (await res.json()) as { ok: boolean; message?: string };
@@ -154,7 +154,10 @@ export function AdminPage() {
   const loadOverview = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/overview", { credentials: "include" });
+      const res = await fetch("/api/admin/overview", {
+        credentials: "include",
+        headers: authHeaders()
+      });
       if (res.status === 403 || res.status === 401) {
         setForbidden(true);
         return;
@@ -178,7 +181,7 @@ export function AdminPage() {
       await fetch(`/api/admin/users/${encodeURIComponent(target.id)}/role`, {
         method: "PATCH",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ role: nextRole })
       });
       await loadOverview();
@@ -201,7 +204,7 @@ export function AdminPage() {
       const res = await fetch(`/api/admin/users/${encodeURIComponent(resetTarget.id)}/password`, {
         method: "PATCH",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ adminPassword: verifiedAdminPw, newPassword })
       });
       const json = (await res.json()) as { ok: boolean; message?: string };
@@ -225,7 +228,8 @@ export function AdminPage() {
     try {
       await fetch(`/api/admin/users/${encodeURIComponent(target.id)}`, {
         method: "DELETE",
-        credentials: "include"
+        credentials: "include",
+        headers: authHeaders()
       });
       await loadOverview();
     } finally {
@@ -239,7 +243,8 @@ export function AdminPage() {
     try {
       await fetch(`/api/admin/published/${encodeURIComponent(slug)}`, {
         method: "DELETE",
-        credentials: "include"
+        credentials: "include",
+        headers: authHeaders()
       });
       await loadOverview();
     } finally {

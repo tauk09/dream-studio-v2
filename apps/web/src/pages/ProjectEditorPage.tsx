@@ -87,6 +87,7 @@ export function ProjectEditorPage() {
   // Publish modal state
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -269,6 +270,7 @@ export function ProjectEditorPage() {
   const handlePublishToggle = async () => {
     if (!project) return;
     setPublishing(true);
+    setPublishError(null);
     try {
       if (project.publishState === "published") {
         const updated = await unpublishProject(project);
@@ -280,6 +282,10 @@ export function ProjectEditorPage() {
         const { project: updated } = await publishProject(project, html);
         setProject(updated);
       }
+    } catch (err) {
+      setPublishError(
+        err instanceof Error ? err.message : "게시 처리 중 오류가 발생했습니다. 다시 로그인해 주세요."
+      );
     } finally {
       setPublishing(false);
     }
@@ -911,6 +917,15 @@ export function ProjectEditorPage() {
                     링크 복사
                   </button>
                 </div>
+              </div>
+            )}
+
+            {publishError && (
+              <div
+                role="alert"
+                className="mt-4 rounded-xl border border-[#FBC9D0] bg-[#FEECEF] p-3 text-xs font-medium text-[#B82839]"
+              >
+                {publishError}
               </div>
             )}
 

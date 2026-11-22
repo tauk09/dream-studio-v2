@@ -5,6 +5,7 @@ import type {
   GenerationJob,
   PendingCodeChange
 } from "@dream-studio-v2/core";
+import { authHeaders } from "../store/authStore";
 
 export interface AIStatusResponse {
   configured: boolean;
@@ -51,14 +52,17 @@ export async function startGenerationJob(payload: StartJobPayload): Promise<Star
   const res = await fetch("/api/ai/jobs", {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(payload)
   });
   return (await res.json()) as StartJobResponse;
 }
 
 export async function fetchGenerationJob(jobId: string): Promise<GenerationJob | null> {
-  const res = await fetch(`/api/ai/jobs/${encodeURIComponent(jobId)}`, { credentials: "include" });
+  const res = await fetch(`/api/ai/jobs/${encodeURIComponent(jobId)}`, {
+    credentials: "include",
+    headers: authHeaders()
+  });
   if (!res.ok) return null;
   return (await res.json()) as GenerationJob;
 }
@@ -66,7 +70,8 @@ export async function fetchGenerationJob(jobId: string): Promise<GenerationJob |
 export async function cancelGenerationJob(jobId: string): Promise<boolean> {
   const res = await fetch(`/api/ai/jobs/${encodeURIComponent(jobId)}/cancel`, {
     method: "POST",
-    credentials: "include"
+    credentials: "include",
+    headers: authHeaders()
   });
   if (!res.ok) return false;
   const data = (await res.json()) as { ok: boolean };
@@ -80,7 +85,7 @@ export async function recommendGameIdeas(
   const res = await fetch("/api/ai/recommend-games", {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ careerPrompt, testFixtureMode })
   });
   return (await res.json()) as RecommendGamesResponse;
@@ -94,7 +99,7 @@ export async function requestConversationalEdit(
   const res = await fetch("/api/ai/edit", {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ project, userRequest, testFixtureMode })
   });
   return (await res.json()) as ConversationalEditResponse;

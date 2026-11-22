@@ -97,6 +97,9 @@ export class CloudStore {
     this.db = new DatabaseSync(resolved);
     this.db.exec(`
       PRAGMA journal_mode = WAL;
+      PRAGMA synchronous = FULL;
+      PRAGMA busy_timeout = 5000;
+      PRAGMA foreign_keys = ON;
       CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         email TEXT NOT NULL UNIQUE,
