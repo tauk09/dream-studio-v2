@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand: #6858F5;
+  --color-brand-hover: #5544E4;
+  --color-brand-soft: #EEF0FF;
+  --color-ink: #17182B;
+  --color-ink-muted: #70758B;
+  --color-canvas: #F7F8FC;
+  --color-surface: #FFFFFF;
+  --color-line: #E6E8F0;
+  --color-mint: #32CDB5;
+  --color-amber: #FFB66D;
+  --color-danger: #E75566;
+  --color-success: #1EA882;
+
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", Inter, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  button:not(:disabled),
+  a[href] {
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+  }
+
+  /* Clean subtle scrollbars */
+  ::-webkit-scrollbar {
+    width: 7px;
+    height: 7px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #d5d8e5;
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #b6bbd0;
+  }
+}
+
+.hero-ambient {
+  background:
+    radial-gradient(640px circle at 18% 12%, rgba(104, 88, 245, 0.11), transparent 62%),
+    radial-gradient(520px circle at 84% 24%, rgba(50, 205, 181, 0.12), transparent 60%),
+    linear-gradient(180deg, #ffffff 0%, #f9faff 55%, #f7f8fc 100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

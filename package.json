@@ -1,0 +1,30 @@
+{
+  "name": "dream-studio-v2",
+  "private": true,
+  "version": "2.0.0",
+  "packageManager": "pnpm@10.34.9",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "build:packages": "corepack pnpm --filter @dream-studio-v2/core build",
+    "predev": "corepack pnpm run build:packages",
+    "dev": "concurrently -n web,api -c magenta,cyan \"corepack pnpm --filter @dream-studio-v2/web dev\" \"corepack pnpm --filter @dream-studio-v2/api dev\"",
+    "pretypecheck": "corepack pnpm run build:packages",
+    "typecheck": "corepack pnpm -r typecheck",
+    "lint": "eslint .",
+    "pretest": "corepack pnpm run build:packages",
+    "test": "corepack pnpm -r test",
+    "build": "corepack pnpm run build:packages && corepack pnpm --filter @dream-studio-v2/api build && corepack pnpm --filter @dream-studio-v2/web build",
+    "start": "NODE_ENV=production node apps/api/dist/index.js"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.0.0",
+    "concurrently": "^10.0.7",
+    "eslint": "^10.15.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.73.0",
+    "vitest": "^5.1.1"
+  }
+}
