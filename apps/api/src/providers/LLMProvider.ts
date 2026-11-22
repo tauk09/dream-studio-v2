@@ -21,15 +21,49 @@ export interface LLMProvider {
   generateJson<T>(req: LLMJsonRequest): Promise<T>;
 }
 
+function repairRawJsonText(input: string): string {
+  // 1. Escape raw newlines/tabs inside double-quoted string literals
+  let out = "";
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i]!;
+    if (inString) {
+      if (escaped) {
+        out += ch;
+        escaped = false;
+      } else if (ch === "\\") {
+        out += ch;
+        escaped = true;
+      } else if (ch === '"') {
+        out += ch;
+        inString = false;
+      } else if (ch === "\n") {
+        out += "\\n";
+      } else if (ch === "\r") {
+        out += "\\r";
+      } else if (ch === "\t") {
+        out += "\\t";
+      } else {
+        out += ch;
+      }
+    } else {
+      if (ch === '"') inString = true;
+      out += ch;
+    }
+  }
+  // 2. Remove trailing commas before } or ]
+  return out.replace(/,\s*([}\]])/g, "$1");
+}
+
 function tryParseJson(text: string): { ok: true; value: unknown } | { ok: false; err: Error } {
   try {
     return { ok: true, value: JSON.parse(text) };
   } catch (e) {
-    // Attempt safe cleanup for trailing commas before } or ]
-    const cleaned = text.replace(/,\s*([}\]])/g, "$1");
-    if (cleaned !== text) {
+    const repaired = repairRawJsonText(text);
+    if (repaired !== text) {
       try {
-        return { ok: true, value: JSON.parse(cleaned) };
+        return { ok: true, value: JSON.parse(repaired) };
       } catch {
         // fall through
       }

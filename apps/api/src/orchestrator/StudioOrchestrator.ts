@@ -381,16 +381,33 @@ export class StudioOrchestrator {
       const systemPrompt =
         input.kind === "game" ? SYSTEM_GAME_CODEGEN_PROMPT : SYSTEM_WEBSITE_CODEGEN_PROMPT;
       this.jobs.updateStage(jobId, "generating_code");
-      let raw = await active.generateJson<unknown>({
-        systemPrompt,
-        maxOutputTokens: 16384,
-        userPrompt: JSON.stringify({
-          kind: input.kind,
-          studentPrompt: input.prompt,
-          designIntent: input.designIntent,
-          extraNotes: input.extraNotes ?? ""
-        })
-      });
+      let raw: unknown;
+      let genAttempt = 0;
+      while (true) {
+        try {
+          raw = await active.generateJson<unknown>({
+            systemPrompt,
+            maxOutputTokens: 16384,
+            temperature: genAttempt === 0 ? 0.65 : 0.25,
+            userPrompt: JSON.stringify({
+              kind: input.kind,
+              studentPrompt: input.prompt,
+              designIntent: input.designIntent,
+              extraNotes:
+                genAttempt === 0
+                  ? (input.extraNotes ?? "")
+                  : `${input.extraNotes ?? ""} (중요: 반드시 RFC8259 표준 JSON만 출력하고 문자열 내부 따옴표와 줄바꿈을 정확히 이스케이프하세요.)`
+            })
+          });
+          break;
+        } catch (genErr) {
+          genAttempt += 1;
+          if (genAttempt > 2 || this.jobs.get(jobId)?.status === "cancelled") {
+            throw genErr;
+          }
+          this.jobs.updateStage(jobId, "repairing_code", genAttempt);
+        }
+      }
 
       this.jobs.updateStage(jobId, "validating_build");
       let parsed = LLMProjectOutputSchema.safeParse(normalizeLLMProjectOutput(raw, input));
