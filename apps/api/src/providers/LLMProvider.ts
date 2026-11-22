@@ -21,18 +21,45 @@ export interface LLMProvider {
   generateJson<T>(req: LLMJsonRequest): Promise<T>;
 }
 
-function parseJsonResponse(rawText: string): unknown {
-  const trimmed = rawText.trim();
+function tryParseJson(text: string): { ok: true; value: unknown } | { ok: false; err: Error } {
   try {
-    return JSON.parse(trimmed);
-  } catch {
-    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    if (fenced?.[1]) return JSON.parse(fenced[1].trim());
-    const start = trimmed.indexOf("{");
-    const end = trimmed.lastIndexOf("}");
-    if (start >= 0 && end > start) return JSON.parse(trimmed.slice(start, end + 1));
-    throw new Error("AI 응답에서 유효한 JSON 객체를 찾을 수 없습니다.");
+    return { ok: true, value: JSON.parse(text) };
+  } catch (e) {
+    // Attempt safe cleanup for trailing commas before } or ]
+    const cleaned = text.replace(/,\s*([}\]])/g, "$1");
+    if (cleaned !== text) {
+      try {
+        return { ok: true, value: JSON.parse(cleaned) };
+      } catch {
+        // fall through
+      }
+    }
+    return { ok: false, err: e instanceof Error ? e : new Error(String(e)) };
   }
+}
+
+function parseJsonResponse(rawText: string): unknown {
+  const trimmed = rawText.replace(/^\uFEFF/, "").trim();
+  const direct = tryParseJson(trimmed);
+  if (direct.ok) return direct.value;
+
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) {
+    const fParsed = tryParseJson(fenced[1].trim());
+    if (fParsed.ok) return fParsed.value;
+  }
+
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    const sliced = tryParseJson(trimmed.slice(start, end + 1));
+    if (sliced.ok) return sliced.value;
+    throw new RetryableProviderError(
+      `AI JSON 형식 오류(자동 재시도 대상): ${sliced.err.message}`,
+      502
+    );
+  }
+  throw new RetryableProviderError("AI 응답에서 유효한 JSON 객체를 찾을 수 없습니다.", 502);
 }
 
 function parseKeyList(single?: string, multi?: string): string[] {
@@ -380,8 +407,10 @@ export class FailoverLLMProvider implements LLMProvider {
         } catch (err) {
           lastError = err instanceof Error ? err : new Error(String(err));
           if (err instanceof RetryableProviderError) {
-            const cooldownMs = err.status === 429 ? 60_000 : 30_000;
-            markSlotCooldown(slot.id, cooldownMs);
+            if (err.status === 429 || err.status === 503 || err.status === 404) {
+              const cooldownMs = err.status === 429 ? 60_000 : 30_000;
+              markSlotCooldown(slot.id, cooldownMs);
+            }
             continue;
           }
           // AbortError / transient network error -> try next provider slot
