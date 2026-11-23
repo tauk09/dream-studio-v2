@@ -64,7 +64,7 @@ export function SandboxedPreview({
             <ShieldCheck className="h-3.5 w-3.5 text-[#1EA882]" />
             <span className="font-medium text-[#17182B]">격리 샌드박스 실행</span>
             <span className="hidden text-[11px] text-[#70758B] sm:inline">
-              sandbox="allow-scripts" · 외부 네트워크 차단
+              sandbox="allow-scripts allow-forms allow-modals" · 외부 네트워크 차단
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -103,7 +103,7 @@ export function SandboxedPreview({
           ref={iframeRef}
           title={title}
           srcDoc={previewHtml}
-          sandbox="allow-scripts"
+          sandbox="allow-scripts allow-forms allow-modals"
           className="h-full w-full border-0 bg-white"
         />
       </div>

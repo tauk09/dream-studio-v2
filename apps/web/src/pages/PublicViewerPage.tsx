@@ -42,7 +42,7 @@ export function PublicViewerPage() {
     <iframe
       title={snapshot.title}
       srcDoc={snapshot.previewHtml}
-      sandbox="allow-scripts"
+      sandbox="allow-scripts allow-forms allow-modals"
       className="block h-screen w-screen border-0 bg-white"
     />
   );

@@ -54,7 +54,7 @@ describe("Dream Studio 2.0 Web App", () => {
     );
     const iframe = container.querySelector("iframe");
     expect(iframe).toBeTruthy();
-    expect(iframe?.getAttribute("sandbox")).toBe("allow-scripts");
+    expect(iframe?.getAttribute("sandbox")).toContain("allow-scripts");
     expect(iframe?.getAttribute("sandbox")).not.toContain("allow-same-origin");
   });
 });

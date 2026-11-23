@@ -183,11 +183,15 @@ window.addEventListener('DOMContentLoaded', function(){
     .replace(/<link[^>]+rel=["']stylesheet["'][^>]*>/gi, "")
     .replace(/<script[^>]+src=["'][^"']+["'][^>]*>\s*<\/script>/gi, "");
 
-  const headInject = `${cspMeta}\n<style>\n${blockCss}\n${css}\n</style>\n${bridge}`;
+  const safeCss = css.replace(/<\/style>/gi, "<\\/style>");
+  const safeJs = js.replace(/<\/script>/gi, "<\\/script>");
+  const headInject = `${cspMeta}\n<style>\n${blockCss}\n${safeCss}\n</style>\n${bridge}`;
   html = /<\/head>/i.test(html)
-    ? html.replace(/<\/head>/i, `${headInject}\n</head>`)
+    ? html.replace(/<\/head>/i, () => `${headInject}\n</head>`)
     : `<!doctype html><html><head><meta charset="UTF-8">${headInject}</head><body>${html}</body></html>`;
 
-  const scriptInject = js ? `<script>\n${js}\n</script>` : "";
-  return /<\/body>/i.test(html) ? html.replace(/<\/body>/i, `${scriptInject}\n</body>`) : `${html}\n${scriptInject}`;
+  const scriptInject = safeJs ? `<script>\n${safeJs}\n</script>` : "";
+  return /<\/body>/i.test(html)
+    ? html.replace(/<\/body>/i, () => `${scriptInject}\n</body>`)
+    : `${html}\n${scriptInject}`;
 }
