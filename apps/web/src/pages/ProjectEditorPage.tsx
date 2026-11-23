@@ -94,6 +94,7 @@ export function ProjectEditorPage() {
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
+  const [publishNotice, setPublishNotice] = useState<string | null>(null);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -138,12 +139,21 @@ export function ProjectEditorPage() {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     const run = async () => {
       await saveProject(next);
+      // If already published, automatically sync the live published snapshot (/p/:slug or /g/:slug)
+      if (next.publishState === "published" && next.publishedSlug) {
+        try {
+          const freshHtml = await bundlePreviewHtml(next.source.files, next.componentGraph);
+          await publishProject(next, freshHtml);
+        } catch {
+          // Keep draft saved even if live publish sync hits a transient error
+        }
+      }
       setSaveState("saved");
     };
     if (immediate) {
       void run();
     } else {
-      saveTimerRef.current = setTimeout(() => void run(), 350);
+      saveTimerRef.current = setTimeout(() => void run(), 450);
     }
   }, []);
 
@@ -326,20 +336,41 @@ export function ProjectEditorPage() {
     commitChange(restored, { rebuild: true, immediate: true });
   };
 
+  const handleRepublishUpdate = async () => {
+    if (!project) return;
+    setPublishing(true);
+    setPublishError(null);
+    setPublishNotice(null);
+    try {
+      const freshHtml = await bundlePreviewHtml(project.source.files, project.componentGraph);
+      setPreviewHtml(freshHtml);
+      const { project: updated } = await publishProject(project, freshHtml);
+      setProject(updated);
+      setPublishNotice("게시된 주소에 최신 수정 사항이 즉시 반영되었습니다!");
+    } catch (err) {
+      setPublishError(
+        err instanceof Error ? err.message : "게시 업데이트 중 오류가 발생했습니다."
+      );
+    } finally {
+      setPublishing(false);
+    }
+  };
+
   const handlePublishToggle = async () => {
     if (!project) return;
     setPublishing(true);
     setPublishError(null);
+    setPublishNotice(null);
     try {
       if (project.publishState === "published") {
         const updated = await unpublishProject(project);
         setProject(updated);
       } else {
-        const html =
-          previewHtml ||
-          (await bundlePreviewHtml(project.source.files, project.componentGraph));
-        const { project: updated } = await publishProject(project, html);
+        const freshHtml = await bundlePreviewHtml(project.source.files, project.componentGraph);
+        setPreviewHtml(freshHtml);
+        const { project: updated } = await publishProject(project, freshHtml);
         setProject(updated);
+        setPublishNotice("게시가 완료되었습니다! 앞으로 수정하면 게시 페이지도 자동 업데이트됩니다.");
       }
     } catch (err) {
       setPublishError(
@@ -1090,6 +1121,12 @@ export function ProjectEditorPage() {
               </div>
             )}
 
+            {publishNotice && (
+              <div className="mt-4 rounded-xl border border-[#BCEAD8] bg-[#E8F8F2] p-3 text-xs font-semibold text-[#14795C]">
+                {publishNotice}
+              </div>
+            )}
+
             {publishError && (
               <div
                 role="alert"
@@ -1099,10 +1136,19 @@ export function ProjectEditorPage() {
               </div>
             )}
 
-            <div className="mt-6 flex justify-end gap-2">
+            <div className="mt-6 flex flex-wrap justify-end gap-2">
               <Button variant="secondary" size="sm" onClick={() => setPublishOpen(false)}>
                 닫기
               </Button>
+              {project.publishState === "published" && (
+                <Button
+                  size="sm"
+                  disabled={publishing}
+                  onClick={() => void handleRepublishUpdate()}
+                >
+                  {publishing ? "반영 중..." : "최신 수정사항 반영"}
+                </Button>
+              )}
               <Button
                 variant={project.publishState === "published" ? "danger" : "primary"}
                 size="sm"
