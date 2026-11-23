@@ -45,6 +45,21 @@ window.__DREAM_CONFIG__ = ${configJson};
 window.__DREAM_GRAPH__ = ${graphJson};
 window.__DREAM_LISTENERS__ = [];
 window.onDreamConfigUpdate = function(fn){ if(typeof fn === 'function') window.__DREAM_LISTENERS__.push(fn); };
+(function(){
+  ['log','warn','error'].forEach(function(lvl){
+    var orig = console[lvl];
+    console[lvl] = function(){
+      try{
+        var msg = Array.prototype.slice.call(arguments).map(function(a){
+          if(typeof a === 'object'){ try{ return JSON.stringify(a); }catch(_){ return String(a); } }
+          return String(a);
+        }).join(' ').slice(0, 400);
+        window.parent.postMessage({ type: 'DREAM_CONSOLE_LOG', level: lvl, message: msg }, '*');
+      }catch(_){}
+      if(typeof orig === 'function') orig.apply(console, arguments);
+    };
+  });
+})();
 window.addEventListener('error', function(e){ try{ var detail = String(e.message || '실행 오류') + (e.lineno ? (' (line ' + e.lineno + ')') : ''); window.parent.postMessage({ type: 'DREAM_RUNTIME_ERROR', message: detail }, '*'); }catch(_){} });
 window.addEventListener('unhandledrejection', function(e){ try{ var reason = e.reason && e.reason.message ? e.reason.message : String(e.reason || '비동기 오류'); window.parent.postMessage({ type: 'DREAM_RUNTIME_ERROR', message: reason }, '*'); }catch(_){} });
 

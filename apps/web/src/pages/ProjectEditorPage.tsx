@@ -15,6 +15,7 @@ import {
   Globe,
   History,
   Layers,
+  Maximize2,
   MessageSquareText,
   Monitor,
   Plus,
@@ -76,6 +77,9 @@ export function ProjectEditorPage() {
   const [rightTab, setRightTab] = useState<RightTab>("properties");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<string>("index.html");
+  const [codeDraft, setCodeDraft] = useState<string>("");
+  const [codeDirty, setCodeDirty] = useState<boolean>(false);
+  const [codeModalOpen, setCodeModalOpen] = useState<boolean>(false);
 
   // AI conversational edit state
   const [aiRequest, setAiRequest] = useState("");
@@ -116,7 +120,10 @@ export function ProjectEditorPage() {
       }
       setProject(loaded);
       setSelectedNodeId(loaded.componentGraph.nodes[0]?.id ?? null);
-      setSelectedFile(Object.keys(loaded.source.files)[0] ?? "index.html");
+      const firstFile = Object.keys(loaded.source.files)[0] ?? "index.html";
+      setSelectedFile(firstFile);
+      setCodeDraft(loaded.source.files[firstFile] ?? "");
+      setCodeDirty(false);
       setAiFixtureMode(loaded.generatorSource === "dev_fixture");
       await rebuildPreview(loaded);
       if (active) setLoading(false);
@@ -226,6 +233,50 @@ export function ProjectEditorPage() {
     if (!project) return;
     const updated = toggleComponentBlockVisibility(project, nodeId);
     commitChange(updated, { immediate: true });
+  };
+
+  const handleSelectFile = (fileName: string) => {
+    setSelectedFile(fileName);
+    setCodeDraft(project?.source.files[fileName] ?? "");
+    setCodeDirty(false);
+  };
+
+  useEffect(() => {
+    if (!project || codeDirty) return;
+    setCodeDraft(project.source.files[selectedFile] ?? "");
+  }, [project, selectedFile, codeDirty]);
+
+  const handleApplyCodeDraft = () => {
+    if (!project) return;
+    const now = new Date().toISOString();
+    const nextFiles = {
+      ...project.source.files,
+      [selectedFile]: codeDraft
+    };
+    const nextRev = project.revision + 1;
+    const updated: DreamProject = {
+      ...project,
+      revision: nextRev,
+      updatedAt: now,
+      source: {
+        ...project.source,
+        files: nextFiles
+      },
+      versions: [
+        ...project.versions.slice(-29),
+        {
+          revision: nextRev,
+          sourceSnapshot: structuredClone(nextFiles),
+          graphSnapshot: structuredClone(project.componentGraph),
+          changeDescription: `직접 코드 수정: ${selectedFile}`,
+          createdAt: now,
+          validationStatus: "valid"
+        }
+      ]
+    };
+    setCodeDirty(false);
+    setLastRuntimeError(null);
+    commitChange(updated, { rebuild: true, immediate: true });
   };
 
   const handleTitleChange = (title: string) => {
@@ -650,26 +701,55 @@ export function ProjectEditorPage() {
 
             {leftTab === "files" && (
               <div className="space-y-2">
-                <p className="px-2 pb-1 text-[11px] font-semibold text-[#70758B]">
-                  생성된 소스 파일 (읽기 전용)
-                </p>
-                {Object.keys(project.source.files).map((fileName) => (
+                <div className="flex items-center justify-between px-1">
+                  <p className="text-[11px] font-semibold text-[#70758B]">소스 코드 직접 편집</p>
                   <button
-                    key={fileName}
                     type="button"
-                    onClick={() => setSelectedFile(fileName)}
-                    className={`block w-full rounded-lg px-2.5 py-1.5 text-left font-mono text-xs ${
-                      selectedFile === fileName
-                        ? "bg-[#EEF0FF] font-semibold text-[#5544E4]"
-                        : "text-[#575C72] hover:bg-[#F7F8FC]"
-                    }`}
+                    onClick={() => setCodeModalOpen(true)}
+                    className="inline-flex items-center gap-1 rounded-lg bg-[#EEF0FF] px-2 py-1 text-[10px] font-bold text-[#5544E4] hover:bg-[#6858F5] hover:text-white"
+                    title="큰 화면에서 코드 편집"
                   >
-                    {fileName}
+                    <Maximize2 className="h-3 w-3" />
+                    크게 편집
                   </button>
-                ))}
-                <pre className="mt-2 max-h-[340px] overflow-auto rounded-xl bg-[#17182B] p-3 font-mono text-[10px] leading-relaxed text-[#E6E8F0]">
-                  {project.source.files[selectedFile] ?? ""}
-                </pre>
+                </div>
+                <div className="space-y-1">
+                  {Object.keys(project.source.files)
+                    .filter((f) => f !== "manifest.json")
+                    .map((fileName) => (
+                      <button
+                        key={fileName}
+                        type="button"
+                        onClick={() => handleSelectFile(fileName)}
+                        className={`block w-full rounded-lg px-2.5 py-1.5 text-left font-mono text-xs ${
+                          selectedFile === fileName
+                            ? "bg-[#EEF0FF] font-semibold text-[#5544E4]"
+                            : "text-[#575C72] hover:bg-[#F7F8FC]"
+                        }`}
+                      >
+                        {fileName}
+                      </button>
+                    ))}
+                </div>
+                <textarea
+                  value={codeDraft}
+                  onChange={(e) => {
+                    setCodeDraft(e.target.value);
+                    setCodeDirty(true);
+                  }}
+                  spellCheck={false}
+                  rows={14}
+                  className="w-full rounded-xl bg-[#17182B] p-3 font-mono text-[11px] leading-relaxed text-[#E6E8F0] focus:outline-none focus:ring-2 focus:ring-[#6858F5]"
+                />
+                <Button
+                  size="sm"
+                  className="w-full"
+                  disabled={!codeDirty}
+                  onClick={handleApplyCodeDraft}
+                >
+                  <Check className="h-3.5 w-3.5" />
+                  {codeDirty ? "코드 적용 및 미리보기 갱신" : "최신 코드 반영됨"}
+                </Button>
               </div>
             )}
           </div>
@@ -905,6 +985,71 @@ export function ProjectEditorPage() {
           </div>
         </aside>
       </div>
+
+      {/* Fullscreen Direct Code Editor Modal */}
+      {codeModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#17182B]/60 p-4 backdrop-blur-xs"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="flex h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-[#17182B] text-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
+              <div className="flex items-center gap-2">
+                <Code2 className="h-4 w-4 text-[#32CDB5]" />
+                <span className="text-sm font-bold">직접 코드 편집기</span>
+                <div className="ml-3 flex gap-1">
+                  {Object.keys(project.source.files)
+                    .filter((f) => f !== "manifest.json")
+                    .map((fileName) => (
+                      <button
+                        key={fileName}
+                        type="button"
+                        onClick={() => handleSelectFile(fileName)}
+                        className={`rounded-lg px-2.5 py-1 font-mono text-xs ${
+                          selectedFile === fileName
+                            ? "bg-[#6858F5] font-bold text-white"
+                            : "bg-white/10 text-white/70 hover:bg-white/20"
+                        }`}
+                      >
+                        {fileName}
+                      </button>
+                    ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  disabled={!codeDirty}
+                  onClick={() => {
+                    handleApplyCodeDraft();
+                    setCodeModalOpen(false);
+                  }}
+                >
+                  <Check className="h-3.5 w-3.5" />
+                  적용하고 닫기
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => setCodeModalOpen(false)}
+                  className="rounded-lg p-1.5 text-white/70 hover:bg-white/10 hover:text-white"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            <textarea
+              value={codeDraft}
+              onChange={(e) => {
+                setCodeDraft(e.target.value);
+                setCodeDirty(true);
+              }}
+              spellCheck={false}
+              className="flex-1 resize-none bg-[#111324] p-5 font-mono text-xs leading-relaxed text-[#E6E8F0] focus:outline-none"
+            />
+          </div>
+        </div>
+      )}
 
       {/* Publish Modal */}
       {publishOpen && (
