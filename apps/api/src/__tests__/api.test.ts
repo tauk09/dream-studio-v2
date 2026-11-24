@@ -88,12 +88,23 @@ describe("Dream Studio 2.0 API (Auth Gate, GenerationJob, Security Validator, Re
   });
 
   it("repairs invalid LLM output automatically on retry with live_ai provider", async () => {
-    let calls = 0;
+    let buildCalls = 0;
     const flakyLLM: LLMProvider = {
       providerName: "gemini",
       modelName: "gemini-3-flash-preview",
-      async generateJson<T>(): Promise<T> {
-        calls += 1;
+      async generateJson<T>(req: { systemPrompt: string }): Promise<T> {
+        if (req.systemPrompt.includes("수석 프로덕트 아키텍트")) {
+          return {
+            title: "복구된 컴퓨터 교실",
+            careerGoal: "컴퓨터 교사",
+            extractedRequirements: ["코딩 체험"],
+            visualDesignSpec: { atmosphere: "모던" },
+            sectionsOrScenes: ["메인"],
+            interactiveFeatures: [{ name: "체험", trigger: "클릭", behavior: "문구 변경" }],
+            domIds: ["t"]
+          } as T;
+        }
+        buildCalls += 1;
         return {
           title: "복구된 컴퓨터 교실",
           careerGoal: "컴퓨터 교사",
@@ -109,7 +120,7 @@ describe("Dream Studio 2.0 API (Auth Gate, GenerationJob, Security Validator, Re
           files: {
             "index.html": "<!doctype html><html><body><h1 id='t'>Hi</h1></body></html>",
             "styles.css": "body{margin:0}",
-            "app.js": calls === 1 ? "fetch('https://blocked.test');" : "document.getElementById('t').textContent='OK';"
+            "app.js": buildCalls === 1 ? "fetch('https://blocked.test');" : "document.getElementById('t').textContent='OK';"
           },
           componentGraph: { nodes: [] }
         } as T;

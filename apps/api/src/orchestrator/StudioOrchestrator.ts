@@ -42,7 +42,29 @@ const LLMGameIdeasOutputSchema = z.object({
   ideas: z.array(GameIdeaRecommendationSchema).min(1).max(5)
 });
 
-const SYSTEM_CODEGEN_PROMPT = `당신은 Dream Studio 2.0의 AI Creative Planner & Code Generator입니다.
+const SYSTEM_ARCHITECT_PROMPT = `당신은 Dream Studio 2.0의 수석 프로덕트 아키텍트 & 게임 디렉터입니다.
+학생이 설명한 아이디어를 꼼꼼히 분석해, 개발자가 **설명을 100% 그대로 구현할 수 있는 초구체적 설계 명세(JSON)**를 작성하세요.
+학생의 설명에 나온 고유 명사, 캐릭터, 규칙, 기능, 분위기를 단 하나도 빼먹지 말고 구체화하세요.
+
+순수 JSON만 반환하세요:
+{
+  "title": "학생 의도에 딱 맞는 매력적인 한국어 제목",
+  "careerGoal": "장래희망 또는 주제",
+  "extractedRequirements": ["학생이 요청한 핵심 요소 1", "핵심 요소 2", "핵심 요소 3", "핵심 요소 4"],
+  "visualDesignSpec": {
+    "palette": { "bg": "#...", "surface": "#...", "primary": "#...", "secondary": "#...", "text": "#..." },
+    "atmosphere": "분위기와 그래픽 스타일 구체 설명",
+    "customVisuals": "직접 그릴 SVG 일러스트 또는 Canvas 캐릭터/배경/이펙트 상세 묘사"
+  },
+  "sectionsOrScenes": ["섹션/화면 1 상세", "섹션/화면 2 상세", "섹션/화면 3 상세", "섹션/화면 4 상세"],
+  "interactiveFeatures": [
+    { "name": "기능명", "trigger": "사용자 조작(클릭/입력/키보드)", "behavior": "정확한 동작과 화면 변화" }
+  ],
+  "domIds": ["heroTitle", "startBtn", "..."],
+  "gameMechanics": "게임인 경우: 이동·충돌·점수·레벨·승패·재시작 규칙의 수학적/구체적 설명 (웹사이트면 생략)"
+}`;
+
+const SYSTEM_CODEGEN_PROMPT = `당신은 Dream Studio 2.0의 AI Creative Planner & Senior Code Generator입니다.
 고정 템플릿에 텍스트만 바꾸지 말고, 학생의 요청마다 완전히 새로운 레이아웃·컴포넌트·게임 로직 코드를 생성해 순수 JSON 객체 하나만 반환하세요.
 
 규칙:
@@ -402,6 +424,33 @@ export class StudioOrchestrator {
       const active = provider!;
       const systemPrompt =
         input.kind === "game" ? SYSTEM_GAME_CODEGEN_PROMPT : SYSTEM_WEBSITE_CODEGEN_PROMPT;
+
+      // Stage 1: Architect Agent — dissect student's exact prompt into a concrete build spec
+      let buildPlan: unknown = null;
+      try {
+        const planRaw = await active.generateJson<unknown>({
+          systemPrompt: SYSTEM_ARCHITECT_PROMPT,
+          maxOutputTokens: 4096,
+          temperature: 0.4,
+          userPrompt: JSON.stringify({
+            kind: input.kind,
+            studentPrompt: input.prompt,
+            designIntent: input.designIntent,
+            extraNotes: input.extraNotes ?? ""
+          })
+        });
+        const planRec = asRecord(planRaw);
+        // Only adopt as buildPlan if it actually looks like an architect plan (not a full file payload from mocks)
+        if (!planRec["files"] && (planRec["extractedRequirements"] || planRec["visualDesignSpec"])) {
+          buildPlan = planRaw;
+        }
+      } catch {
+        // Non-fatal: proceed directly to codegen if architect stage hits transient error
+      }
+
+      if (this.jobs.get(jobId)?.status === "cancelled") return;
+
+      // Stage 2: Senior Builder Agent — dedicate full output budget to faithful, rich code
       this.jobs.updateStage(jobId, "generating_code");
       let raw: unknown;
       let genAttempt = 0;
@@ -418,7 +467,10 @@ export class StudioOrchestrator {
               extraNotes:
                 genAttempt === 0
                   ? (input.extraNotes ?? "")
-                  : `${input.extraNotes ?? ""} (중요: 반드시 RFC8259 표준 JSON만 출력하고 문자열 내부 따옴표와 줄바꿈을 정확히 이스케이프하세요.)`
+                  : `${input.extraNotes ?? ""} (중요: 반드시 RFC8259 표준 JSON만 출력하고 문자열 내부 따옴표와 줄바꿈을 정확히 이스케이프하세요.)`,
+              architectBuildPlan: buildPlan,
+              fidelityInstruction:
+                "architectBuildPlan의 extractedRequirements, visualDesignSpec, interactiveFeatures, domIds, gameMechanics를 단 하나도 생략하지 말고 실제 동작하는 풍부한 코드로 100% 구현하세요."
             })
           });
           break;

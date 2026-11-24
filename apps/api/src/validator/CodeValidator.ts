@@ -102,6 +102,26 @@ export function validateGeneratedCode(
     }
   }
 
+  // DOM ID consistency check: catch missing HTML IDs referenced by getElementById()
+  const htmlSource = files["index.html"] ?? "";
+  const idMatches = combinedCode.matchAll(/getElementById\s*\(\s*['"]([a-zA-Z0-9_-]+)['"]\s*\)/g);
+  const missingIds = new Set<string>();
+  for (const m of idMatches) {
+    const id = m[1]!;
+    const inHtml = new RegExp(`\\bid\\s*=\\s*['"]${id}['"]`).test(htmlSource);
+    const createdInJs =
+      new RegExp(`\\.id\\s*=\\s*['"]${id}['"]`).test(combinedCode) ||
+      new RegExp(`id=['"]${id}['"]`).test(combinedCode);
+    if (!inHtml && !createdInJs) {
+      missingIds.add(id);
+    }
+  }
+  if (missingIds.size > 0) {
+    errors.push(
+      `JS에서 getElementById로 참조하지만 index.html에 없는 ID: ${Array.from(missingIds).slice(0, 6).join(", ")}`
+    );
+  }
+
   return {
     ok: errors.length === 0,
     syntaxPassed,
