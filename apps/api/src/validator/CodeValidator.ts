@@ -102,11 +102,14 @@ export function validateGeneratedCode(
     }
   }
 
-  // DOM ID consistency check: catch missing HTML IDs referenced by getElementById()
+  // DOM ID consistency check: catch missing HTML IDs referenced by getElementById() or querySelector('#...')
   const htmlSource = files["index.html"] ?? "";
-  const idMatches = combinedCode.matchAll(/getElementById\s*\(\s*['"]([a-zA-Z0-9_-]+)['"]\s*\)/g);
+  const idPatterns = [
+    ...combinedCode.matchAll(/getElementById\s*\(\s*['"]([a-zA-Z0-9_-]+)['"]\s*\)/g),
+    ...combinedCode.matchAll(/querySelector\s*\(\s*['"]#([a-zA-Z0-9_-]+)['"]\s*\)/g)
+  ];
   const missingIds = new Set<string>();
-  for (const m of idMatches) {
+  for (const m of idPatterns) {
     const id = m[1]!;
     const inHtml = new RegExp(`\\bid\\s*=\\s*['"]${id}['"]`).test(htmlSource);
     const createdInJs =
@@ -118,8 +121,32 @@ export function validateGeneratedCode(
   }
   if (missingIds.size > 0) {
     errors.push(
-      `JS에서 getElementById로 참조하지만 index.html에 없는 ID: ${Array.from(missingIds).slice(0, 6).join(", ")}`
+      `JS에서 참조하지만 index.html에 없는 ID: ${Array.from(missingIds).slice(0, 8).join(", ")} (반드시 index.html에도 해당 id 요소를 함께 추가하세요)`
     );
+  }
+
+  // Combined script scope check: catch duplicate top-level const/let declarations across inline <script> in index.html and .js files
+  const inlineScripts = Array.from(
+    (files["index.html"] ?? "").matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)
+  )
+    .map((m) => m[1] ?? "")
+    .join("\n");
+  if (inlineScripts.trim().length > 0 && combinedCode.trim().length > 0) {
+    const scopeCheck = ts.transpileModule(`${inlineScripts}\n${combinedCode}`, {
+      fileName: "combined_bundle.js",
+      reportDiagnostics: true,
+      compilerOptions: { allowJs: true, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }
+    });
+    const scopeErrs = (scopeCheck.diagnostics ?? [])
+      .filter((d) => d.category === ts.DiagnosticCategory.Error)
+      .map(
+        (d) =>
+          `index.html 인라인 <script>와 JS 파일 간 변수 중복/구문 충돌 — index.html에서 인라인 <script>를 제거하고 JS 파일로 통합하세요: ${ts.flattenDiagnosticMessageText(d.messageText, " ")}`
+      );
+    if (scopeErrs.length > 0) {
+      syntaxPassed = false;
+      errors.push(...scopeErrs.slice(0, 3));
+    }
   }
 
   return {

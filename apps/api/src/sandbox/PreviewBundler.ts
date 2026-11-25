@@ -16,7 +16,7 @@ export function buildSandboxedPreviewHtml(
 
   const configJson = JSON.stringify(flattenComponentGraphConfig(graph)).replace(/</g, "\\u003c");
   const graphJson = JSON.stringify(graph).replace(/</g, "\\u003c");
-  const cspMeta = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none';">`;
+  const cspMeta = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https:; img-src https: http: data: blob:; font-src https: data:; connect-src 'none';">`;
 
   const blockCss = `
 .ds-block-wrap{max-width:1040px;margin:20px auto;padding:0 18px;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;box-sizing:border-box}
@@ -60,7 +60,22 @@ window.onDreamConfigUpdate = function(fn){ if(typeof fn === 'function') window._
     };
   });
 })();
-window.addEventListener('error', function(e){ try{ var detail = String(e.message || '실행 오류') + (e.lineno ? (' (line ' + e.lineno + ')') : ''); window.parent.postMessage({ type: 'DREAM_RUNTIME_ERROR', message: detail }, '*'); }catch(_){} });
+window.addEventListener('error', function(e){
+  try{
+    var t = e && e.target;
+    if(t && t.tagName === 'IMG'){
+      if(!t.dataset.dsFallback){
+        t.dataset.dsFallback = '1';
+        var label = (t.getAttribute('alt') || '이미지').slice(0, 24).replace(/[<>&"']/g, '');
+        var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#EEF0FF"/><stop offset="100%" stop-color="#DDF6F1"/></linearGradient></defs><rect width="640" height="400" fill="url(#g)"/><circle cx="510" cy="96" r="34" fill="#6858F5" opacity="0.18"/><path d="M0 310 L170 190 L310 285 L445 170 L640 305 L640 400 L0 400 Z" fill="#32CDB5" opacity="0.24"/><text x="50%" y="52%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="22" font-weight="700" fill="#394060">' + label + '</text></svg>';
+        t.src = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+      }
+      return;
+    }
+    var detail = String(e.message || '실행 오류') + (e.lineno ? (' (line ' + e.lineno + ')') : '');
+    window.parent.postMessage({ type: 'DREAM_RUNTIME_ERROR', message: detail }, '*');
+  }catch(_){}
+}, true);
 window.addEventListener('unhandledrejection', function(e){ try{ var reason = e.reason && e.reason.message ? e.reason.message : String(e.reason || '비동기 오류'); window.parent.postMessage({ type: 'DREAM_RUNTIME_ERROR', message: reason }, '*'); }catch(_){} });
 
 function __dsEsc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }

@@ -74,6 +74,8 @@ const SYSTEM_CODEGEN_PROMPT = `당신은 Dream Studio 2.0의 AI Creative Planner
 4. componentGraph.nodes에는 블록 편집 가능 항목(editableVia: "block")과 AI 수정 항목(editableVia: "ai_only")을 명확히 구분하세요.
 5. 학생이 제공하지 않은 개인 경력·수상 이력을 사실처럼 지어내지 말고, 예시 데이터는 blueprint.exampleDataDisclaimerKo에 명시하세요.
 6. JSON 안정성: files의 HTML 속성(class='...', id='...')과 JS 문자열 내부에서는 큰따옴표(") 대신 작은따옴표(')를 우선 사용해 JSON 파싱 오류를 원천 방지하세요.
+7. 이미지 규칙: 사진이 필요할 때는 깨지는 가짜 Unsplash ID를 추측해 쓰지 말고, 항상 실제로 열리는 'https://picsum.photos/seed/영문키워드/800/500' 형식 또는 깔끔한 인라인 SVG 일러스트를 사용하세요.
+8. 파일 역할 분리: index.html 안에는 인라인 <script>나 <style> 태그를 넣지 말고, 모든 스타일은 styles.css에, 모든 로직은 app.js(또는 game.js)에만 작성하세요.
 
 반드시 아래 정확한 JSON 키 구조를 따르세요 (추가 키 금지, 특히 "label" 대신 반드시 "labelKo" 사용):
 {
@@ -120,13 +122,14 @@ const SYSTEM_EDIT_PROMPT = `당신은 Dream Studio 2.0의 시니어 디버거 & 
 현재 files, existingFileNames, componentGraph, 그리고 runtimeError(실제 브라우저 실행 오류)와 recentHistory(이전에 시도한 수정 요청)를 꼼꼼히 읽고 근본 원인을 찾아 완전히 해결한 수정 코드를 순수 JSON으로 반환하세요.
 
 [절대 준수 규칙]
-1. 먼저 "rootCauseDiagnosisKo"에 실제 버그의 근본 원인(예: 어느 파일 몇 번째 로직/DOM ID 불일치/상태 초기화 누락/충돌 판정 오류)을 구체적으로 분석하세요.
-2. recentHistory에 비슷한 요청이 있었다면, 이전에 했던 표면적 수정이 실패했다는 뜻이므로 코드를 처음부터 다시 점검해 진짜 원인을 근본적으로 고치세요.
-3. "filePatches"에는 반드시 existingFileNames에 이미 존재하는 파일명만 사용하세요! (예: game.js가 있는데 app.js나 script.js를 새로 만들면 두 파일이 중복 실행되어 심각한 오류가 납니다.)
-4. filePatches의 값은 수정된 파일의 **완전한 전체 소스 코드**여야 합니다. 절대 "// 기존 코드 생략"이나 "..."으로 줄이지 마세요.
-5. index.html의 모든 id와 JS의 getElementById/querySelector가 100% 일치하는지, 이벤트 리스너와 게임 재시작 초기화가 정상 동작하는지 검증하세요.
-6. HTML 속성 및 JS 문자열 내부에서는 작은따옴표(')를 우선 사용해 JSON 파싱 오류를 방지하세요.
-7. 보안 금지: eval, new Function, fetch, XMLHttpRequest, WebSocket, document.cookie, localStorage, 외부 CDN 스크립트.
+1. 먼저 "rootCauseDiagnosisKo"에 실제 버그나 미반영 원인을 구체적으로 분석하세요 (예: 데이터 배열에만 필드를 추가하고 실제 모달 HTML/CSS/클릭 핸들러 렌더링 코드를 안 고쳤는지, index.html 내부의 구버전 인라인 <script>가 app.js와 충돌하는지, 가짜 이미지 URL이 404가 나는지 등).
+2. **다중 파일 동시 패치 필수**: 모달창, 카드, 이미지, 레이아웃, 새 데이터 필드를 추가·수정할 때는 절대 JS 데이터만 바꾸지 말고, 화면에 실제로 보이도록 연결된 **index.html(마크업/모달 컨테이너), styles.css(모달 open/display/z-index/이미지 크기 스타일), app.js(이벤트 바인딩 및 동적 DOM 렌더링)**를 모두 함께 filePatches에 포함해 한 번에 맞물리게 수정하세요!
+3. 만약 index.html 안에 예전 인라인 <script>...</script>가 들어 있어 app.js와 중복/충돌한다면 index.html에서 인라인 스크립트를 제거하고 app.js 하나로 통합하세요.
+4. 이미지가 안 나오거나 사진 추가 요청이 있으면 절대 가짜 unsplash URL을 쓰지 말고, 100% 로드되는 'https://picsum.photos/seed/영문고유키워드/800/500' URL(장소별로 서로 다른 seed 영문키워드 지정) 또는 고품질 인라인 SVG를 사용하세요.
+5. "filePatches"에는 반드시 existingFileNames에 이미 존재하는 파일명만 사용하세요! (새 .js 파일 추가 금지)
+6. filePatches의 값은 수정된 파일의 **완전한 전체 소스 코드**여야 합니다. 절대 "// 기존 코드 생략"이나 "..."으로 줄이지 마세요.
+7. HTML 속성 및 JS 문자열 내부에서는 작은따옴표(')를 우선 사용해 JSON 파싱 오류를 방지하세요.
+8. 보안 금지: eval, new Function, fetch, XMLHttpRequest, WebSocket, document.cookie, localStorage, 외부 CDN 스크립트.
 
 응답 JSON 형식:
 {
@@ -712,6 +715,7 @@ export class StudioOrchestrator {
         return provider!.generateJson<unknown>({
           systemPrompt: SYSTEM_EDIT_PROMPT,
           maxOutputTokens: 16384,
+          preferPro: true,
           userPrompt: JSON.stringify({
             userRequest,
             kind: project.kind,

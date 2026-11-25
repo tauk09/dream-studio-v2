@@ -36,10 +36,13 @@ export function SandboxedPreview({
   const [logs, setLogs] = useState<SandboxConsoleEntry[]>([]);
   const logSeqRef = useRef(0);
 
+  const [previewRev, setPreviewRev] = useState(0);
+
   useEffect(() => {
     setReady(false);
     setRuntimeError(null);
     setLogs([]);
+    setPreviewRev((r) => r + 1);
   }, [previewHtml, reloadNonce]);
 
   useEffect(() => {
@@ -149,7 +152,7 @@ export function SandboxedPreview({
 
       <div className={`relative w-full flex-1 bg-white ${heightClass}`}>
         <iframe
-          key={reloadNonce}
+          key={previewRev}
           ref={iframeRef}
           title={title}
           srcDoc={previewHtml}

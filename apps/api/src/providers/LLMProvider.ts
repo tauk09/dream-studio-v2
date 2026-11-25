@@ -4,6 +4,7 @@ export interface LLMJsonRequest {
   maxOutputTokens?: number;
   temperature?: number;
   timeoutMs?: number;
+  preferPro?: boolean;
 }
 
 export type ProviderKind =
@@ -422,10 +423,15 @@ export class FailoverLLMProvider implements LLMProvider {
     return globalLimiter.run(async () => {
       let lastError: Error | null = null;
 
-      // Priority-first: always use highest-quality non-cooling slot first,
-      // and only fall back to secondary/lite slots if the primary is cooling down or fails.
+      // Priority-first: for complex edits/repairs (preferPro), prefer Pro-tier non-cooling slots first
       const ready = this.slots.filter((s) => !isSlotCoolingDown(s.id));
-      const candidates = ready.length > 0 ? ready : this.slots;
+      const base = ready.length > 0 ? ready : this.slots;
+      const candidates = req.preferPro
+        ? [
+            ...base.filter((s) => s.provider.modelName.includes("pro") || s.provider.modelName.includes("gpt-4.1")),
+            ...base.filter((s) => !s.provider.modelName.includes("pro") && !s.provider.modelName.includes("gpt-4.1"))
+          ]
+        : base;
 
       for (const slot of candidates) {
         try {
