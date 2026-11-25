@@ -112,6 +112,7 @@ export class CloudStore {
         token TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
         expires_at TEXT NOT NULL,
+        last_active_at TEXT,
         created_at TEXT NOT NULL,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       );
@@ -156,13 +157,17 @@ export class CloudStore {
       CREATE INDEX IF NOT EXISTS idx_ai_logs_date ON ai_usage_logs(created_at DESC);
     `);
 
-    // Safe migration for existing DBs created before 'role' column existed
+    // Safe migration for existing DBs created before 'role' or 'last_active_at' existed
     const cols = this.db.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
     if (!cols.some((c) => c.name === "role")) {
       this.db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'");
       this.db.exec(
         "UPDATE users SET role = 'admin' WHERE id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1)"
       );
+    }
+    const sessCols = this.db.prepare("PRAGMA table_info(sessions)").all() as Array<{ name: string }>;
+    if (!sessCols.some((c) => c.name === "last_active_at")) {
+      this.db.exec("ALTER TABLE sessions ADD COLUMN last_active_at TEXT");
     }
   }
 
@@ -253,12 +258,18 @@ export class CloudStore {
   }
 
   private createSession(userId: string): string {
+    // Invalidate previous sessions on other devices when logging in on a new device
+    this.db.prepare("DELETE FROM sessions WHERE user_id = ?").run(userId);
     const token = crypto.randomBytes(32).toString("hex");
     const now = new Date();
-    const expires = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const ttlMinutes = Number(process.env["SESSION_TTL_MINUTES"] ?? "120") || 120;
+    const expires = new Date(now.getTime() + ttlMinutes * 60 * 1000);
+    const nowIso = now.toISOString();
     this.db
-      .prepare("INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
-      .run(token, userId, expires.toISOString(), now.toISOString());
+      .prepare(
+        "INSERT INTO sessions (token, user_id, expires_at, last_active_at, created_at) VALUES (?, ?, ?, ?, ?)"
+      )
+      .run(token, userId, expires.toISOString(), nowIso, nowIso);
     return token;
   }
 
@@ -266,7 +277,7 @@ export class CloudStore {
     if (!token) return null;
     const row = this.db
       .prepare(
-        `SELECT u.id, u.email, u.display_name, u.role, u.created_at, s.expires_at
+        `SELECT u.id, u.email, u.display_name, u.role, u.created_at, s.expires_at, s.last_active_at, s.created_at AS sess_created_at
          FROM sessions s JOIN users u ON u.id = s.user_id
          WHERE s.token = ?`
       )
@@ -278,14 +289,28 @@ export class CloudStore {
           role: string;
           created_at: string;
           expires_at: string;
+          last_active_at: string | null;
+          sess_created_at: string;
         }
       | undefined;
 
     if (!row) return null;
-    if (Date.now() > Date.parse(row.expires_at)) {
+    const nowMs = Date.now();
+    const idleMinutes = Number(process.env["SESSION_IDLE_MINUTES"] ?? "30") || 30;
+    const lastActiveMs = Date.parse(row.last_active_at ?? row.sess_created_at);
+    const expiredByTtl = nowMs > Date.parse(row.expires_at);
+    const expiredByIdle = Number.isFinite(lastActiveMs) && nowMs - lastActiveMs > idleMinutes * 60 * 1000;
+
+    if (expiredByTtl || expiredByIdle) {
       this.db.prepare("DELETE FROM sessions WHERE token = ?").run(token);
       return null;
     }
+
+    // Refresh last_active_at (sliding idle window up to absolute expires_at)
+    this.db
+      .prepare("UPDATE sessions SET last_active_at = ? WHERE token = ?")
+      .run(new Date(nowMs).toISOString(), token);
+
     return {
       id: row.id,
       email: row.email,

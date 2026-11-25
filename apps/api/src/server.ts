@@ -112,9 +112,11 @@ function isHttpsRequest(req: FastifyRequest): boolean {
 
 function setSessionCookie(req: FastifyRequest, reply: FastifyReply, token: string): void {
   const secure = isHttpsRequest(req) ? "; Secure" : "";
+  // Session cookie (no Max-Age): expires automatically when the browser closes,
+  // and server enforces idle (30m) + absolute (2h) timeouts.
   reply.header(
     "Set-Cookie",
-    `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000${secure}`
+    `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax${secure}`
   );
 }
 

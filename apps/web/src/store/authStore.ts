@@ -12,7 +12,9 @@ const TOKEN_STORAGE_KEY = "ds_v2_session_token";
 
 export function getStoredAuthToken(): string | null {
   try {
-    return window.localStorage.getItem(TOKEN_STORAGE_KEY);
+    // Clear any legacy localStorage token so closing browser or opening a new tab session logs out cleanly
+    window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+    return window.sessionStorage.getItem(TOKEN_STORAGE_KEY);
   } catch {
     return null;
   }
@@ -20,8 +22,9 @@ export function getStoredAuthToken(): string | null {
 
 function setStoredAuthToken(token: string | null): void {
   try {
-    if (token) window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
-    else window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+    window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+    if (token) window.sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
+    else window.sessionStorage.removeItem(TOKEN_STORAGE_KEY);
   } catch {
     // Ignore storage quota / private mode errors
   }
